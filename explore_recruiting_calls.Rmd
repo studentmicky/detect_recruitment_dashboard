@@ -1,0 +1,348 @@
+---
+title: "Explor Recruiting Calls"
+date: "Created: 2019-10-29 <br> Updated: `r Sys.Date()`"
+---
+
+Save this template file. Replace it when you upgrade versions of RStudio. Copy and Paste into:
+
+RStudio > Package Contents > Contents > Resources > resources > templates > r_markdown_notebook_osx.Rmd
+
+# Overview
+
+What is this file about? Months later, I should be able to glance at this section and know if the thing I'm looking for is in this file or not.
+
+
+# Load packages and data
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(comment = NA)
+Sys.setenv(TZ = "US/Central")
+```
+
+```{r message=FALSE}
+library(dplyr)
+library(bfuncs)
+```
+
+[top](#top)
+
+
+# Data management
+
+Merge scheduled variable into call log
+
+```{r}
+call_log <- left_join(
+  call_log,
+  scheduled_ids %>% select(medstar_id, scheduled),
+  by = "medstar_id"
+) %>% 
+  mutate(scheduled = if_else(is.na(scheduled), 0L, scheduled))
+```
+
+Deidentify medstar_id
+
+```{r}
+call_log <- call_log %>% 
+  mutate(id = match(medstar_id, unique(medstar_id)))
+```
+
+Create a calls per id variable
+
+```{r}
+call_log <- call_log %>% 
+  group_by(medstar_id) %>% 
+  mutate(call_number = row_number()) %>% 
+  ungroup()
+```
+
+Translate response values:
+
+* On 2019-09-19 Modifications to the call log and phone recruitment script were completed. As a result, the response options for record status, response, item 1 and item 5 all changed.    
+* 2019-09-19 valid response include:   
+    - No answer   
+    - Bad contact number   
+    - Left message   
+    - Schedule callback   
+    - Unable to schedule callback   
+    - Other person hang up   
+    - Participant deceased   
+    - Participant impaired or disabled   
+    - Participant contacted   
+    - Other   
+* Don't try to fix all the anomolies now. Just get the number of times participant answered   
+* Check on the others late
+
+Email to Sunil on 2019-10-31 at 10:15 about giving me access to change responses in FM Pro:
+
+Currently, the only way to fix this on my end in a way that guarantees forward compatibility is to recode the response using medstar_id and call_time. However, because medstar_id and call_time are identifiers, and I'm saving my code to the cloud (Github), I can't use those variables in my code. Even if I could, it will take forever to recode them that way.
+
+So, I was thinking that you could create a new variable in the call_log data (not visible in the phone screening layout) called response_adjusted or response_recode. Then give me access to a table view of the call log data. I'll log into FM Pro, populate the new variable with the correct codes, and use that variable in my analyses. 
+
+* For now, just change big categories, not specific records. Because of little aomolies in the notes, I can really only change Participant answered and Scheduled call back time right now.
+
+* Sunil sent me an Excel file to update. I just need to do it when I get a chance.
+
+* I sent Megin an email asking her to do this.
+
+```{r rows.print = 14}
+# call_log %>% 
+#   count(response)
+```
+
+```{r}
+# check_log <- call_log %>% 
+#   select(medstar_id, call_number, x_created_by, response, notes)
+# Check in viewer window
+```
+
+```{r}
+# Combine Participant answered and Participant contacted
+call_log <- call_log %>% 
+  mutate(
+    response_adjusted = case_when(
+      response == "Participant answered" ~ "Participant contacted",
+      response == "Scheduled call back time" ~ "Schedule callback",
+      TRUE ~ response
+    )
+  )
+```
+
+Drop unneeded variables
+
+```{r}
+call_log <- call_log %>% 
+  select(
+    id, call_number, x_created_by, call_time, call_date, 
+    response_adjusted, call_hour, call_hour_f, day, scheduled
+  )
+```
+
+# Some stats that are useful throughout
+
+The call log should be every call made.
+
+```{r}
+# Earliest call
+first_call <- min(call_log$call_date)
+# Most recent call
+last_call  <- max(call_log$call_date)
+```
+
+
+
+
+# Analysis
+
+## Calls per day
+
+* Min, max, mean
+
+```{r}
+calls_by_date <- call_log %>% 
+  # Each row is a call and has a call date.
+  # Counting the number of rows per date is equivalent to counting the number
+  # of calls per day.
+  count(call_date, name = "n_calls") %>% 
+  # Fill missing days with zero
+  tidyr::complete(
+   call_date = seq.Date(first_call, last_call, by = "days"), fill = list(n_calls = 0)
+  ) %>% 
+  # Add a doy of week variable so that we can remove weekends
+  mutate(
+    call_day = weekdays(call_date),
+    # Do this so that they are displayed in their natural order instead of 
+    # alphabetical order.
+    call_day = forcats::fct_relevel(call_day, "Monday", "Tuesday", "Wednesday", "Thursday", "Friday")
+  ) %>% 
+  # For tracking over time
+  mutate(analysis_date = Sys.time()) %>% 
+  select(analysis_date, call_date, call_day, n_calls) %>% 
+  print()
+```
+
+```{r}
+calls_by_day <- calls_by_date %>% 
+  group_by(call_day) %>% 
+  summarise(n_calls = sum(n_calls)) %>% 
+  ungroup() %>% 
+  # For tracking over time
+  mutate(analysis_date = Sys.time()) %>% 
+  select(analysis_date, call_day, n_calls) %>% 
+  print()
+```
+
+```{r}
+calls_by_hour <- call_log %>% 
+  count(call_hour_f, name = "n_calls") %>% 
+  # For tracking over time
+  mutate(analysis_date = Sys.time()) %>% 
+  select(analysis_date, call_hour_f, n_calls) %>% 
+  print()
+```
+
+```{r}
+calls_stats <- calls_by_date %>%
+  filter(!(call_day %in% c("Saturday", "Sunday"))) %>% 
+  summarise(
+    total = sum(n_calls),
+    min   = min(n_calls),
+    mean  = mean(n_calls),
+    max   = max(n_calls)
+  ) %>% 
+  # For tracking over time
+  mutate(analysis_date = Sys.time()) %>% 
+  select(analysis_date, everything()) %>% 
+  print()
+```
+
+
+# Patient contacts per day
+
+i.e. how many times per day is she getting a call log response of participant contacted. Actually, no. They could be contacted, but refuse an interview. This isn't really interviews. We want to know how many times per day she talks to a participant on the phone.
+
+```{r}
+pt_contacts_by_date <- call_log %>% 
+  filter(response_adjusted == "Participant contacted") %>% 
+  count(call_date, name = "n_contacts") %>% 
+  # Fill in missing days with 0
+  tidyr::complete(
+    call_date = seq.Date(first_call, last_call, by  = "days"), fill = list(n_contacts = 0)
+  ) %>% 
+  # Add a doy of week variable so that we can remove weekends
+  mutate(
+    call_day = weekdays(call_date),
+    # Do this so that they are displayed in their natural order instead of 
+    # alphabetical order.
+    call_day = forcats::fct_relevel(call_day, "Monday", "Tuesday", "Wednesday", "Thursday", "Friday")
+  ) %>% 
+  # For tracking over time
+  mutate(analysis_date = Sys.time()) %>% 
+  select(analysis_date, call_date, call_day, n_contacts) %>% 
+  print()
+```
+
+```{r}
+pt_contacts_by_day<- pt_contacts_by_date %>% 
+  group_by(call_day) %>% 
+  summarise(n_contacts = sum(n_contacts)) %>% 
+  ungroup() %>% 
+  # For tracking over time
+  mutate(analysis_date = Sys.time()) %>% 
+  select(analysis_date, call_day, n_contacts) %>% 
+  print()
+```
+
+```{r}
+pt_contacts_by_hour <- call_log %>% 
+  filter(response_adjusted == "Participant contacted") %>% 
+  count(call_hour_f, name = "n_contacts") %>%
+  tidyr::complete(call_hour_f = factor(levels(call_log$call_hour_f)), fill = list(n_contacts = 0)) %>% 
+  # For tracking over time
+  mutate(analysis_date = Sys.time()) %>% 
+  select(analysis_date, call_hour_f, n_contacts) %>% 
+  print()
+```
+
+```{r}
+pt_contacts_stats <- pt_contacts_by_date %>% 
+  # Don't count Saturday and Sunday
+  filter(!(call_day %in% c("Saturday", "Sunday"))) %>% 
+  summarise(
+    total = sum(n_contacts),
+    min   = min(n_contacts),
+    mean  = mean(n_contacts),
+    max   = max(n_contacts)
+  ) %>%
+  # For tracking over time
+  mutate(analysis_date = Sys.time()) %>% 
+  select(analysis_date, everything()) %>% 
+  print()
+```
+
+Right now, it looks like we are talking to a patient 2.2 times per day on average. 
+
+How many calls do we make on average per patient contact?
+
+```{r}
+calls_per_contact <- (calls_stats$total / pt_contacts_stats$total) %>% 
+  round(1) %>% 
+  print()
+```
+
+We make contact with the patient at 1 out of every 6.1 calls made, on average.
+
+[top](#top)
+
+
+# Contact by day of week
+
+```{r}
+calls_by_day %>% 
+  left_join(pt_contacts_by_day, by = "call_day") %>% 
+  mutate(prop = n_contacts / n_calls) %>% 
+  # For tracking over time
+  mutate(analysis_date = Sys.time()) %>% 
+  select(analysis_date, call_day, n_calls, n_contacts, prop) %>% 
+  print()
+```
+
+Mondays and Fridays are when we get the highest proportion of calls that result in a patient contact.
+
+
+# Contact by hour of day
+
+```{r}
+calls_and_contacts_by_hour <- calls_by_hour %>% 
+  left_join(pt_contacts_by_hour, by = "call_hour_f") %>% 
+  mutate(prop = n_contacts / n_calls) %>% 
+  # For tracking over time
+  mutate(analysis_date = Sys.time()) %>% 
+  select(analysis_date, call_hour_f, n_calls, n_contacts, prop) %>% 
+  print()
+```
+
+10-10:59 is when we get the highest proportion of calls that result in a patient contact.
+
+
+# How many first-time calls are made per day (on days where any calls are made)?
+
+```{r}
+calls_by_day_and_call_number <- call_log %>% 
+  # Each row is a call, has a call date, and has a call number (how many times
+  # that particular medstar id has been called).
+  count(call_date, call_number, name = "n_calls") %>% 
+  # Currently, if there were no first time calls on a particular day, 
+  # then there just isn't a row for first time calls on that day. Here, 
+  # we add an explicit row with zero first time calls to days with no 
+  # first time calls (e.g. 10-08)
+  tidyr::complete(call_date, call_number, fill = list(n_calls = 0)) %>% 
+  # For tracking over time
+  mutate(analysis_date = Sys.time()) %>% 
+  select(analysis_date, call_date, call_number, n_calls) %>% 
+  print()
+```
+
+```{r}
+calls_by_day_and_call_number %>% 
+  summarise(
+    unique_days = length(unique(call_date)),
+    days_with_first_call = sum(call_number == 1 & n_calls > 0)
+  )
+```
+
+```{r}
+calls_by_day_and_call_number %>% 
+  filter(call_number == 1) %>% 
+  summarise(mean = mean(n_calls))
+```
+
+So, there were first time calls made on 49 of the 57 days that any calls were made. On average, we make about 11 first time calls per day (that calls are made).
+
+Now let's look at answered calls and scheduled visits by call number. For that, we are waiting to get the recoded responses back from Megin. For example, we want to see if the first call was no answer, how likely is it that any subsequent call will be answered? If the first two are no answer, how likely is it that any subsequent call will be answered?
+
+# Session information
+
+```{r echo=FALSE}
+sessionInfo()
+```
