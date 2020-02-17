@@ -24,6 +24,11 @@ library(dplyr)
 library(bfuncs)
 ```
 
+```{r}
+source("data_import.R")
+```
+
+
 [top](#top)
 
 
@@ -85,6 +90,8 @@ So, I was thinking that you could create a new variable in the call_log data (no
 
 * I sent Megin an email asking her to do this.
 
+* As of 2019-11-21, we manually recoded the responses
+
 ```{r rows.print = 14}
 # call_log %>% 
 #   count(response)
@@ -108,13 +115,51 @@ call_log <- call_log %>%
   )
 ```
 
+```{r}
+# Response recode includes the responses that we manually recoded. 
+# Responses that didn't need to be recoded were left blank (NA).
+# Here we replace NA with response adjusted in in response recode.
+call_log <- call_log %>% 
+  mutate(
+    response_recode = if_else(is.na(response_recode), response_adjusted, response_recode)
+  )
+```
+
+```{r}
+# ID key -- eventually delete this
+# Using now to figure out data weirdness
+id_key <- call_log %>% select(id, medstar_id) %>% distinct()
+```
+
+```{r}
+call_log %>%
+  select(response, response_adjusted, response_recode, notes, medstar_id) %>% 
+  filter(is.na(response_recode))
+```
+
+* Delete call log entry for "duplicate" they weren't actual calls, they were the reason a call wasn't made.
+
+* Delete call log entry for "San Antonio" they weren't actual calls, they were the reason a call wasn't made.
+
+* Delete call log entry for "Out of service area" they weren't actual calls, they were the reason a call wasn't made.
+
+* Will email Sunil about this...
+
+```{r}
+call_log <- call_log %>% 
+  filter(!(is.na(response_recode) & (
+    notes %in% c("duplicate", "San Antonio", "Out of service area")
+  )))
+```
+
+
 Drop unneeded variables
 
 ```{r}
 call_log <- call_log %>% 
   select(
     id, call_number, x_created_by, call_time, call_date, 
-    response_adjusted, call_hour, call_hour_f, day, scheduled
+    response_recode, call_hour, call_hour_f, day, scheduled
   )
 ```
 
@@ -203,7 +248,7 @@ i.e. how many times per day is she getting a call log response of participant co
 
 ```{r}
 pt_contacts_by_date <- call_log %>% 
-  filter(response_adjusted == "Participant contacted") %>% 
+  filter(response_recode == "Participant contacted") %>% 
   count(call_date, name = "n_contacts") %>% 
   # Fill in missing days with 0
   tidyr::complete(
@@ -235,7 +280,7 @@ pt_contacts_by_day<- pt_contacts_by_date %>%
 
 ```{r}
 pt_contacts_by_hour <- call_log %>% 
-  filter(response_adjusted == "Participant contacted") %>% 
+  filter(response_recode == "Participant contacted") %>% 
   count(call_hour_f, name = "n_contacts") %>%
   tidyr::complete(call_hour_f = factor(levels(call_log$call_hour_f)), fill = list(n_contacts = 0)) %>% 
   # For tracking over time
@@ -337,9 +382,85 @@ calls_by_day_and_call_number %>%
   summarise(mean = mean(n_calls))
 ```
 
-So, there were first time calls made on 49 of the 57 days that any calls were made. On average, we make about 11 first time calls per day (that calls are made).
+So, there were first time calls made on 55 of the 63 days that any calls were made. On average, we make about 14 first time calls per day (that calls are made).
 
 Now let's look at answered calls and scheduled visits by call number. For that, we are waiting to get the recoded responses back from Megin. For example, we want to see if the first call was no answer, how likely is it that any subsequent call will be answered? If the first two are no answer, how likely is it that any subsequent call will be answered?
+
+How many people answer on the first call?
+
+```{r}
+call_responses_by_call_number <- call_log %>% 
+  group_by(call_number) %>% 
+  count(response_recode, name = "n_calls") %>% 
+  mutate(
+    total_calls = sum(n_calls),
+    percent = (n_calls / total_calls * 100) %>% round()
+  ) %>% 
+  arrange(call_number, desc(n_calls)) %>% 
+  # For tracking over time
+  mutate(analysis_date = Sys.time()) %>% 
+  select(analysis_date, call_number, response_recode, n_calls, total_calls, percent) %>% 
+  print()
+```
+
+```{r}
+call_responses_by_call_number %>% 
+  filter(response_recode == "Participant contacted")
+```
+
+```{r}
+call_log %>% 
+  group_by(call_number, response_recode) %>% 
+  count(scheduled, name = "n_scheduled") %>% 
+  mutate(
+    total_calls = sum(n_scheduled),
+    percent = (n_scheduled / total_calls * 100) %>% round()
+  ) %>% 
+  # For tracking over time
+  mutate(analysis_date = Sys.time()) %>% 
+  select(analysis_date, call_number, response_recode, scheduled, n_scheduled, 
+         total_calls, percent) %>% 
+  print()
+```
+
+```{r}
+call_log %>% filter(scheduled == 1) %>% arrange(id)
+```
+
+A lot of these don't make sense. Why do we have "No answer" after participant contacted?
+
+At first pass, it appears as though the percentage of people contacted remains relatively constant accross call attempts 1 through 4. 
+
+However, this trend may differ by previous call response. For example, it might be that all (or nearly all) of the participant contacts on call number 2 were scheduled contacts on call number 1.
+
+Let's take a deeper dive...
+
+Call 1 response by call 2 response
+
+Create an ever contacted variable
+
+```{r}
+call_log %>% 
+  
+```
+
+
+```{r}
+call_log %>% 
+  tidyr::pivot_wider(
+    id_cols = id, 
+    names_from = call_number,
+    values_from = response_recode,
+    names_prefix = "call_response_"
+  ) %>% 
+  group_by(call_response_1) %>% 
+  count(call_response_2)
+```
+
+
+
+
+We also need to take a look at scheduled by call number
 
 # Session information
 

@@ -198,7 +198,26 @@ scheduled_ids <- scheduled_ids %>%
   select(-x_created_timestamp)
 ```
 
+2019-12-05: Issues to figure out
 
+- Why are there MedstarIDs in the participant scheduler that aren't in the call log?
+
+- Why do we have "No answer" after participant contacted?
+
+```{r}
+# Why are there MedstarIDs in the participant scheduler that aren't in the call log?
+ids_ps <- participant_scheduler %>% pull(medstar_id) %>% unique()
+ids_cl <- call_log %>% pull(medstar_id) %>% unique()
+```
+
+There are currently more unique ids in the participant scheduler table (1169) than the call log table (1135). Why?
+
+```{r}
+# Ids that appear in the participant scheduler, but not the call log
+setdiff(ids_ps, ids_cl)
+```
+
+I'm going to manually look these up in FM Pro
 
 
 # Clean gift_card
