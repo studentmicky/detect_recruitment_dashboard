@@ -1,17 +1,70 @@
 # =============================================================================
-# Merge separate tables from FM Pro into a single data frame for analysis
+# Read-in and wrangle data from FM Pro DB
 # Created: 2019-09-20
-
-# Tables read-in in data_import.R:
-#   call_log
-#   participant_scheduler
-#   gift_card
-#   moca
+# 
+# You must first connect to the UTHealth VPN
 # =============================================================================
 
-# Load packages & functions
-source("make_posixct.R") # Used to convert dates to POSIXct
+# This file is based on data_import.R; however, instead of just importing, we 
+# merge all the files into a single large file that can be used to create the 
+# dashboard. Delete all this when you are done.
+
+# You may want to eventually break this up into multiple files (or not). For
+# now, just get it to work. Make it pretty later. Delete this too.
+
+
 library(dplyr)
+source("make_posixct.R") # Used to convert dates to POSIXct
+
+# Open the Connection to the FM database
+# Keyring notes: https://db.rstudio.com/best-practices/managing-credentials/
+# Keychain error: https://github.com/r-lib/keyring/issues/45#issuecomment-332491293
+con <- DBI::dbConnect(
+  odbc::odbc(),
+  driver   = "/Library/ODBC/FileMaker ODBC.bundle/Contents/MacOS/FileMaker ODBC",
+  server   = "spsqlapwv003.sph.uthouston.edu",
+  database = "DETECT",
+  uid      = keyring::key_list("detect_fm_db_readonly")[1,2],
+  pwd      = keyring::key_get("detect_fm_db_readonly")
+)
+
+# Pull tables into R as data frames
+call_log              <- DBI::dbReadTable(con, "ParticipantCallLog")
+participant_scheduler <- DBI::dbReadTable(con, "ParticipantScheduler")
+gift_card             <- DBI::dbReadTable(con, "GiftCard")
+moca                  <- DBI::dbReadTable(con, "PhoneRecruitment")
+
+# Close the connection to the database
+DBI::dbDisconnect(con)
+rm(con)
+
+# NOTES on data 
+# -----------------------------------------------------------------------------
+# 2019-08-31 (From Sunil): 
+
+# Originally Participant Call Log was not configured to be an exportable table, 
+# since there was no research data coming out of there. So this table did not 
+# include the following variables, NameFull, xRecordMonth, and xRecordYear (which 
+# pulls in participant's full name and related record month and year respectively 
+# from the Participant table).
+
+# On or around 8/22/19 you had asked about including the phone call log in the 
+# Analytics section. I ran a script that updated all records in the Calls Log 
+# with the xRecordMonth and xRecordYear, which is the modification timestamp 
+# showing 8/22/2019 at 11:17 AM.
+
+# During the above change, I didn't pull in NameFull because of the way that 
+# variable is configured, instead changed the code so that all future call 
+# logs would pull in the name going forward. However, if you need the name I 
+# can update this, not complicated to do. The modification timestamp would 
+# update though with when I do this.
+
+# 8/8/19 seems more likely to be a data entry error than a test case. The 
+# record was created on 8/15/2019 by Jennifer (jtoro) and there are valid 
+# records before and after with CallDate set to 8/15/2019. Also 8/8/19 is 
+# right above 8/15/19 when using the drop-down calendar. It might make more 
+# sense to change CallDate for that record from 8/8/19 to 8/15/19.
+
 
 # =============================================================================
 # Initial data wrangling
@@ -42,6 +95,7 @@ purrr::walk(
 )
 
 
+# -----------------------------------------------------------------------------
 # Clean call_log
 # -----------------------------------------------------------------------------
 call_log <- call_log %>% 
@@ -89,6 +143,8 @@ call_log <- call_log %>%
     "14-14:59", "15-15:59", "16-16:59", "17-17:59", "18-18:59"
   )))
 
+
+# -----------------------------------------------------------------------------
 # Clean participant_scheduler
 # -----------------------------------------------------------------------------
 ## Keep scheduled rows only
@@ -97,7 +153,7 @@ scheduled_ids <- participant_scheduler %>%
 
 ## Keep only the information needed for merging with call log
 scheduled_ids <- scheduled_ids %>% 
-  select(x_created_timestamp, medstar_id) %>% 
+  select(medstar_id, x_created_timestamp, appointment_date, appointment_time) %>% 
   mutate(
     scheduled = 1L,
     # Change classes
@@ -116,13 +172,17 @@ scheduled_ids <- scheduled_ids %>%
   select(-x_created_timestamp)
 
 
+# -----------------------------------------------------------------------------
 # Clean gift_card
 # -----------------------------------------------------------------------------
 ## All we need at this point is the number of gift cards given out, i.e. rows
 ## in this data
 n_completed <- nrow(gift_card)
 
+gift_card
 
+
+# -----------------------------------------------------------------------------
 # Clean moca
 # -----------------------------------------------------------------------------
 ## Deidentify data for local storage
@@ -132,6 +192,30 @@ moca_deid <- moca %>%
 ## Save locally
 readr::write_csv(moca_deid, "data/moca_deid.csv")
 
+
+# =============================================================================
+# Merging the data frames
+# =============================================================================
+detect_data_merged <- call_log %>% 
+  left_join(scheduled_ids, by = "medstar_id")
+
+# The number of rows didn't increase. call_log = 4,328 and 
+# detect_data_merged = 4,328. Unless every single scheduled person was only
+# called one time, detect_data_merged should have 
+
+# Data checking
+# ids in call_log and scheduled_ids
+unique_ids_call_log <- unique(call_log$medstar_id)
+unique_ids_scheduled <- unique(scheduled_ids$medstar_id)
+intersect(unique_ids_call_log, unique_ids_scheduled)
+# There are 115 medstar ids that appear in both dataframes
+# Which ones appear in scheduled ids, but not call_log?
+in_scheduled_not_call_log <- setdiff(unique_ids_scheduled, unique_ids_call_log)
+# Can't look at these ids in the call log. They aren't there. 
+# Look up names and modified by in participant scheduler. May have to go fix
+# Them directly in the FM database.
+review_records <- participant_scheduler %>% 
+  filter(medstar_id %in% in_scheduled_not_call_log)
 
 # Clean up
 # -----------------------------------------------------------------------------
