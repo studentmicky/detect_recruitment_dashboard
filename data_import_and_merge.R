@@ -199,10 +199,6 @@ readr::write_csv(moca_deid, "data/moca_deid.csv")
 detect_data_merged <- call_log %>% 
   left_join(scheduled_ids, by = "medstar_id")
 
-# The number of rows didn't increase. call_log = 4,328 and 
-# detect_data_merged = 4,328. Unless every single scheduled person was only
-# called one time, detect_data_merged should have 
-
 # Data checking
 # ids in call_log and scheduled_ids
 unique_ids_call_log <- unique(call_log$medstar_id)
@@ -216,6 +212,16 @@ in_scheduled_not_call_log <- setdiff(unique_ids_scheduled, unique_ids_call_log)
 # Them directly in the FM database.
 review_records <- participant_scheduler %>% 
   filter(medstar_id %in% in_scheduled_not_call_log)
+
+# Export the medstar ids that are in the scheduled ids list, but do not appear
+# in the call log as a csv file. Send to Sunil. Ask him to add a call log record
+# for each of the scheduled ids. Ask him to set x_created_timestamp to the be
+# equal to x_created_timestamp from the participant scheduler. 
+# We also need a way to try to prevent this from happening in the future. 
+# Perhaps a warning if you modify a record on the recruitment layout, but don't
+# modify the call log. 
+review_records_export <- select(review_records, medstar_id)
+readr::write_csv(review_records_export, "/Users/bradcannell/Desktop/in_scheduled_not_call_log.csv")
 
 # Clean up
 # -----------------------------------------------------------------------------
