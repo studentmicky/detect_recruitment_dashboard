@@ -1,0 +1,69 @@
+---
+title: "Data check: Missing Observations data"
+date: "Created: 2020-03-16 <br> Updated: `r Sys.Date()`"
+---
+
+# Overview
+
+Check to see how many follow-up interviews that were conducted are missing the observational measures.
+
+Delete this file once it is fixed.
+
+# Load packages and data
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(comment = NA)
+Sys.setenv(TZ = "US/Central")
+```
+
+```{r message=FALSE}
+library(dplyr)
+```
+
+```{r}
+consent <- readr::read_csv("/Users/bradcannell/Desktop/Consent.csv")
+observations <- readr::read_csv("/Users/bradcannell/Desktop/Observational Measures.csv")
+```
+
+As of 2020-03-16, 148 people gave consent for a follow-up interview.
+
+What are the unique ids in the consent table?   
+What are the unique ids in the observational measures table?   
+What are the ids that appear in consent, but not the observational measures?   
+
+```{r}
+# There are some records in the consent data for people who weren't home or who didn't give consent. Those people wouldn't be expected to have observational measures, so remove them.
+unique_ids_consent <- consent %>% 
+  filter(xRecordStatus == "Consent received/Participating") %>% 
+  pull(MedstarID) %>% 
+  unique()
+# There are some records in the observations table that are NA for every measure.
+# We need to look into these too.
+unique_ids_observations <- filter(observations, !is.na(UnusualOdor)) %>% 
+  pull(MedstarID) %>% 
+  unique()
+
+intersect(unique_ids_consent, unique_ids_observations) %>% length()
+```
+
+There are 125 MedStar ID's that have a consent and have completed at least some observational measures.
+
+How many have a consent, but no completed observational measures?
+
+```{r}
+in_consent_no_obs <- setdiff(unique_ids_consent, unique_ids_observations)
+in_consent_no_obs <- data.frame(MedstarID = in_consent_no_obs)
+```
+
+2020-03-16: There are 7/134 (5%) follow-up interviews where a follow-up interview was conducted, but the observational measures were not. Export these to a csv file and ask Desiree and Sunil for suggestions about how to try to prevent this in the future.
+
+```{r}
+readr::write_csv(in_consent_no_obs, "/Users/bradcannell/Desktop/in_consent_no_obs.csv")
+```
+
+
+# Session information
+
+```{r echo=FALSE}
+sessionInfo()
+```
