@@ -79,12 +79,6 @@ server <- function(input, output) {
            filter(call_date >= input$date_range[1],  call_date <= input$date_range[2])
     })
 
-
-    
-    
-    
-  
-  
 }
 
 # Run the app ----
