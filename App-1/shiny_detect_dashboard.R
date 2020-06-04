@@ -27,51 +27,63 @@ ui <- fluidPage(
       
       selectInput("main_select", 
                   label = "What would you like to see?",
-                  choices = list("Call Log" = 1)),
+                  choices = c("Call Log", "Gift Card")),
       
       br(),
       
       dateRangeInput('date_range',
                      label = 'Select date range (inclusive): yyyy-mm-dd',
-                     start = min(call_log$call_date), end = Sys.Date()
-      )
+                     start = Sys.Date() - 30 , end = Sys.Date()
+      ),
       
+      br(),
+      
+      img(src = "dr_cannell_headshot.jpg", height = 250, width = 250), 
+      
+      h5("Principal Investigator", align = "center"),
+      h5("Dr. M. Brad Cannell", align = "center")
+      
+        
       
     ),
     
     mainPanel(
-      
-      "Table",
-                 br(),
-                 textOutput("selected_dates"),
-                 br(),
-                 tableOutput("table"))
+      h3(textOutput("main_object")),
+      br(),
+      h3(textOutput("selected_dates")),
+      br(),
+      DT::dataTableOutput(outputId = "table"), style = "height:500px; overflow-y: scroll;overflow-x: scroll;"
+                 
         
       )
       
     )
     
-  
-  
-
-  
-
+)
 
 # Define server logic ----
 server <- function(input, output) {
   
-  call_log_reactive <- reactive({
-    call_log %>% 
-      filter(call_date >= input$date_range[1] & call_date <= input$date_range[2])
+  output$main_object <- renderText({
+    paste("You are viewing ", input$main_select)
   })
   
   output$selected_dates <- renderText({
-    paste(as.character(input$selected_dates), collapse = " to ")
+    paste("You have selected the dates: ", as.character(input$date_range), collapse = " to ")
     })
   
-  output$table <- DT::renderDataTable(
-    call_log_reactive()
-  )
+  output$table <- DT::renderDataTable({
+   if(input$main_select == "") { return() }
+    
+    call_log %>% 
+           filter(call_date >= input$date_range[1],  call_date <= input$date_range[2])
+    })
+
+
+    
+    
+    
+  
   
 }
 
