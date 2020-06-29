@@ -12,6 +12,13 @@
 # You may want to eventually break this up into multiple files (or not). For
 # now, just get it to work. Make it pretty later. Delete this too.
 
+# What files do I need? 
+# At the very least, I need:
+# ParticipantCallLog
+# ParticipantScheduler
+# GiftCard
+# PhoneRecruitment
+
 
 library(dplyr)
 source("make_posixct.R") # Used to convert dates to POSIXct
@@ -69,7 +76,8 @@ rm(con)
 # =============================================================================
 # Initial data wrangling
 #   - Convert all variable names to snake case
-#   - Convert timestamps to POSIXct class (combine like commands across data frames later)
+#   - Convert timestamps to POSIXct class (combine like commands across data 
+#     frames later)
 # =============================================================================
 
 # Convert all variable names to snake case
@@ -92,6 +100,19 @@ purrr::walk(
     # Replace df with new names in global environment
     assign(x, df, envir = .GlobalEnv)
   }
+)
+
+
+# -----------------------------------------------------------------------------
+# Create factor labels that can be used across data sets
+# -----------------------------------------------------------------------------
+# Levels and labels for hour of the day factor variables
+hour_levs <- 0:23
+hour_labs <- c(
+  "00-00:59", "01-01:59", "02-02:59", "03-03:59", "04-04:59", "05-05:59", 
+  "06-06:59", "07-07:59", "08-08:59", "09-09:59", "10-10:59", "11-11:59", 
+  "12-12:59", "13-13:59", "14-14:59", "15-15:59", "16-16:59", "17-17:59", 
+  "18-18:59", "19-19:59", "20-20:59", "21-21:59", "22-22:59", "23-23:59" 
 )
 
 
@@ -138,10 +159,7 @@ if (!setequal(call_hours_in_df, call_hours_expected)) {
 
 # Create a factor version of the call hour variable
 call_log <- call_log %>% 
-  mutate(call_hour_f = factor(call_hour, labels = c(
-    "08-08:59", "09-09:59", "10-10:59", "11-11:59", "12-12:59", "13-13:59", 
-    "14-14:59", "15-15:59", "16-16:59", "17-17:59", "18-18:59"
-  )))
+  mutate(call_hour_f = factor(call_hour, hour_levs, hour_labs))
 
 
 # -----------------------------------------------------------------------------
@@ -163,14 +181,8 @@ scheduled_ids <- scheduled_ids %>%
     scheduled_time = hms::as_hms(x_created_timestamp),
     # Create a call time hour variable
     scheduled_hour = lubridate::hour(scheduled_time),
-    scheduled_hour_f = factor(
-      scheduled_hour, 
-      levels = c(10, 11, 12, 13, 14, 15),
-      labels = c("10-10:59", "11-11:59", "12-12:59", "13-13:59", "14-14:59", "15-15:59")
-    )
-  ) %>% 
+    scheduled_hour_f = factor(scheduled_hour, hour_levs, hour_labs))%>% 
   select(-x_created_timestamp)
-
 
 # -----------------------------------------------------------------------------
 # Clean gift_card
