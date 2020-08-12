@@ -1,0 +1,187 @@
+---
+title: "DETECT Follow Up COVID Analysis"
+output: html_document
+---
+
+This is the R markdown file for the pre-COVID follow up analysis.
+
+#Load Packages
+```{r}
+library(dplyr)
+library(tidyr)
+library(frequency)
+library(stringr)
+```
+
+#Load Data 
+```{r}
+report <- read.csv(file = "/Volumes/sph_research/Detect/Detect Report-2020_07_28_174142.csv")
+
+total_people <- report %>%
+  select(Patient_First_Name,Patient_Last_Name,Patient_Date_Of_Birth) %>%
+  distinct()
+
+#13192 Unique people                         
+
+```
+
+#Separating Date from Date and Time Column
+```{r}
+report_clean <- report %>%
+  select(Incident_Date_Time, Patient_First_Name, Patient_Last_Name, Patient_Age, Patient_Gender, Patient_Race_List, Is_the_older_adult_isolated_in_the_home_and_or_cut_off_from_needed_social_networks_or_supports_, Does_the_older_adult_appear_depressed_anxious_or_emotionally_distressed_for_reasons_other_than_their_immediate_medical_condition) 
+
+report_clean$Incident_Date_Time <- as.character(report_clean$Incident_Date_Time)
+
+report_clean <- report_clean %>%
+  separate(Incident_Date_Time, c("Date", "Time", "AM_PM"), " ")
+```
+
+#Pre v Post COVID Data frames
+```{r}
+#COVID ~ Tarrant Co Shelter in Place March 24, 2020
+
+#https://www.nbcdfw.com/news/coronavirus/fort-worth-mayor-says-yall-stay-safe-yall-stay-healthy-yall-stay-home-stricter-response-coming-tuesday/2337225/
+
+report_clean$Date <- as.Date(as.character(report_clean$Date), "%m/%d/%Y")
+
+report_clean <- report_clean %>%
+  mutate(COVID_lockdown = ifelse(Date < as.Date("2020-03-24"), "Pre", "Post"),
+         gender_clean = ifelse(Patient_Gender == "Female", "F", "M"),
+         race_clean = ifelse(Patient_Race_List == "White", "White",
+                             ifelse(Patient_Race_List == "Black or African American", "Black",
+                                    ifelse(Patient_Race_List == "Hispanic or Latino", "Hispanic", "Other"))))
+
+report_clean <- report_clean %>%
+  subset(Patient_Gender != "Unknown (Unable to Determine)")
+
+pre_covid <- report_clean %>%
+  subset(Date < as.Date("2020-03-24"))
+
+post_covid <- report_clean %>%
+  subset(Date >= as.Date("2020-03-24"))
+
+```
+
+#Analysis
+```{r}
+#Gender
+
+freq(report_clean$gender_clean)
+
+table(report_clean$COVID_lockdown, report_clean$gender_clean)
+chisq.test(table(report_clean$COVID_lockdown, report_clean$gender_clean))
+
+#Race / Ethnicity
+
+freq(report_clean$race_clean)
+
+table(report_clean$COVID_lockdown, report_clean$race_clean)
+chisq.test(table(report_clean$COVID_lockdown, report_clean$race_clean))
+
+#Isolation
+
+freq(report_clean$Is_the_older_adult_isolated_in_the_home_and_or_cut_off_from_needed_social_networks_or_supports_)
+
+table(report_clean$COVID_lockdown, report_clean$Is_the_older_adult_isolated_in_the_home_and_or_cut_off_from_needed_social_networks_or_supports_)
+chisq.test(table(report_clean$COVID_lockdown, report_clean$Is_the_older_adult_isolated_in_the_home_and_or_cut_off_from_needed_social_networks_or_supports_))
+
+#Depression
+
+freq(report_clean$Does_the_older_adult_appear_depressed_anxious_or_emotionally_distressed_for_reasons_other_than_their_immediate_medical_condition)
+
+table(report_clean$COVID_lockdown, report_clean$Does_the_older_adult_appear_depressed_anxious_or_emotionally_distressed_for_reasons_other_than_their_immediate_medical_condition)
+chisq.test(table(report_clean$COVID_lockdown, report_clean$Does_the_older_adult_appear_depressed_anxious_or_emotionally_distressed_for_reasons_other_than_their_immediate_medical_condition))
+
+```
+
+
+#OLDER ANALYSIS How many people were given a follow up questionnaire pre-COVID?
+```{r}
+#COVID ~ Tarrant Co Shelter in Place March 24, 2020
+
+#https://www.nbcdfw.com/news/coronavirus/fort-worth-mayor-says-yall-stay-safe-yall-stay-healthy-yall-stay-home-stricter-response-coming-tuesday/2337225/
+
+
+#It looks like 140 interviews were completed pre-COVID or 89.2% of your total interviews.
+
+pre_covid_people <- pre_covid %>%
+  subset(!(xRecordMonth == "June" )) %>%
+  distinct(NameFull)
+
+#135 people were interviewed before COVID.
+
+post_covid_people <- pre_covid %>%
+  subset((xRecordMonth == "June" )) %>%
+  distinct(NameFull)
+
+#17 people were interviewed after COVID.  This means 1 person was interviewed before and after COVID.
+
+pre_and_post_covid_people <- pre_covid %>%
+  subset((pre_covid$NameFull %in% pre_covid_people$NameFull & pre_covid$NameFull %in% post_covid_people$NameFull))
+
+#One person was interviewed twice before COVID and once after COVID.
+
+```
+
+#How many people were considered depressed based on the GDS?
+```{r}
+#A score >= 5 on the GDS classifies as depressed.
+
+gds_scores <- gen_health %>%
+  select(NameFull, xRecordMonth, xRecordYear ,DepresSatisfied:DepresEnergy) %>%
+  group_by(NameFull) %>%
+  mutate(
+    dq1 = ifelse(DepresSatisfied == "No", 1, 0),
+    dq2 = ifelse(DepresHopeless == "Yes", 1, 0),
+    dq3 = ifelse(DepresBetter == "Yes", 1, 0),
+    dq4 = ifelse(DepresActivities == "Yes", 1, 0),
+    dq5 = ifelse(DepresEmpty == "Yes", 1, 0),
+    dq6 = ifelse(DepresBored == "Yes", 1, 0),
+    dq7 = ifelse(DepresSpirits == "No", 1, 0),
+    dq8 = ifelse(DepresAfraid == "Yes", 1, 0),
+    dq9 = ifelse(DepresHappy == "No", 1, 0),
+    dq10 = ifelse(DepresHelpless == "Yes", 1, 0),
+    dq11 = ifelse(DepresHome == "Yes", 1, 0),
+    dq12 = ifelse(DepresMemory == "Yes", 1, 0),
+    dq13 = ifelse(DepresAlive == "No", 1, 0),
+    dq14 = ifelse(DepresWorthless == "Yes", 1, 0),
+    dq15 = ifelse(DepresEnergy == "No", 1, 0)
+  )
+
+#Having trouble getting rowSums to work with this, so I am doing it the harder way.
+gds_scores <- gds_scores %>%
+  select(NameFull, xRecordMonth, xRecordYear, dq1:dq15) %>%
+  mutate(dq_count = (dq1 + dq2 + dq3 + dq4 + dq5 + dq6 + dq7 + dq8 + dq9 + dq10 + dq11 + dq12 + dq13 + dq14 + dq15),
+         depressed_YN = ifelse(dq_count >= 5, 1, 0))
+
+freq(gds_scores$depressed_YN)
+
+#It looks like 72 or 45.9% of the follow up questionaires qualify as depressed.
+
+gds_count <- gds_scores %>%
+  select(NameFull, depressed_YN) %>%
+  distinct() %>%
+  group_by(NameFull) %>%
+  summarise(
+    count = n(),
+    dep_final = ifelse(count ==1, depressed_YN, 99)
+    )
+
+#99 represents if the individual had more than one conflicting gds depression conclusion.
+
+freq(gds_count$dep_final)
+
+#81 not depressed, 68 depressed, 2 indeterminate.
+```
+
+#Pre and Post COVID Analysis
+```{r}
+self_report <- read.csv(file = "/Users/jaredwiegand/detect_recruitment_dashboard/data/Self Report.csv")
+
+self_report_postCOVID <- self_report %>%
+  subset(xRecordMonth == "June" | xRecordMonth == "July")
+
+self_report_preCOVID <- self_report %>%
+  subset(xRecordMonth != "June" & xRecordMonth != "July")
+```
+

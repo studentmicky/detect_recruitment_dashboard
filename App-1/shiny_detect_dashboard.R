@@ -52,6 +52,8 @@ ui <- fluidPage(
       br(),
       h3(textOutput("selected_dates")),
       br(),
+      plotOutput("calls_per_day"),
+      br(),
       DT::dataTableOutput(outputId = "table"), style = "height:500px; overflow-y: scroll;overflow-x: scroll;"
                  
         
@@ -79,6 +81,7 @@ server <- function(input, output) {
            filter(call_date >= input$date_range[1],  call_date <= input$date_range[2])
     })
 
+  output$calls_per_day <- renderPlot(ggplot(data = call_log, ))
 }
 
 # Run the app ----
